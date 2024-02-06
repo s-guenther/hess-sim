@@ -4,7 +4,7 @@ within the toolbox from various modules, functions or classes.
 
 This module contains functions implementing logic, i.e. some kind of
 mathematical formula to calculate something specific to the scientific
-domain in contrast to the module 'aux' which contains common functions that
+domain in contrast to the module 'misc' which contains common functions that
 convert, parse or process data structures or similar."""
 
 import numpy as np

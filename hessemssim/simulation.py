@@ -654,6 +654,20 @@ class SimComponent(ABC):
         keys = self.get_defaults().keys()
         return {key: getattr(self, key) for key in keys}
 
+    def props_to_para_dict(self, subset=False, full=False):
+        fullset = self.get_current_para_set()
+
+        if subset:
+            para = {k: fullset[k] for k in subset}  # noqa
+        else:
+            para = fullset
+
+        if not full:
+            for key, val in list(para.items()):
+                if val is None:
+                    para.pop(key)
+        return para
+
 
 class InputData:
     def __init__(self, time, value, *, strip_zero=True, downsample=False,

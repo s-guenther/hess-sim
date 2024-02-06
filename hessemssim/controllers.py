@@ -2,13 +2,131 @@
 simulation.py for more information."""
 
 import numpy as np
-import skfuzzy as fuzz
-from skfuzzy import control as ctrl
+
+from hessems.deadzone import deadzone
+from hessems.lowpass import lowpass
 
 from hessemssim.simulation import SimComponent
 
 
-# Controller classes, derived from SimComponent
+# ##
+# ## Controllers that originate in the HESS-EMS package
+# ##
+
+class FilterController(SimComponent):
+    def __init__(self, fcut=None, gain=None, ref=None, finit=0):
+        """Initialize a FilterController Object. It implements the
+        controller strategy 'filter control', i.e. a linear and
+        discretized first order low pass filter with a proportional feedback
+        loop that compensates deviations of the peak storage energy content
+        from a set-point.
+
+
+        Input Parameters:
+            fcut    Filter cutoff frequency of the low pass filter
+            k       Feedback factor/gain of the peak energy feedback loop
+            ref    Reference value for the peak energy feedback loop
+            finit   Initial integration value ("last step" of first
+                    simulation step within the simulation)"""
+
+        # call superclass
+        super().__init__()
+        # Parameters of the controller
+        self.fcut = fcut
+        self.gain = gain
+        self.ref = ref
+        self.finit = finit
+        # name decoding of the generic "states" output vector of sim
+        self.state_names = ['pfilt', 'pcomp']
+
+    def sim(self, inputvec, _, peakvec, statevec):
+        """Implements the behaviour of the FilterController, i.e. first order
+        low pass filter function in discrete form with proportional feedback.
+        See
+        https://en.wikipedia.org/wiki/Low-pass_filter#Discrete
+        -time_realization
+        for more information."""
+        # get relevant variables from input vectors
+        pin = inputvec[1]
+        dt = inputvec[2]
+        last_pfilt = statevec[0]
+        epeak = peakvec[1]
+
+        para = self.props_to_para_dict(subset=['gain', 'ref', 'fcut'])
+        base, peak, filt, feedback = lowpass(pin, dt, last_pfilt, epeak, para)
+
+        return [base, peak], [filt, feedback]
+
+    def get_init(self):
+        """The initial output state of pbase and ppeak is not of importance
+        and arbitrarily set to zero. This also holds true for the internal
+        state 'pfilt' and 'pcomp'. What matters is the initial value of
+        the filter. Consequently, it is set within the internals tuple. """
+        pbase = 0
+        ppeak = 0
+        internals = [self.finit, 0]
+        return [pbase, ppeak], internals
+
+
+class DeadzoneController(SimComponent):
+    def __init__(self, slope_pos=None, slope_neg=None, out_max=None,
+                 out_min=None, threshold_pos=None, threshold_neg=None,
+                 gain=None, window_up=None, window_low=None, base_max=None,
+                 base_min=None, peak_max=None, peak_min=None):
+        # call superclass
+        super().__init__()
+        # write parameters
+        self.slope_pos = slope_pos
+        self.slope_neg = slope_neg
+        self.out_max = out_max
+        self.out_min = out_min
+        self.threshold_pos = threshold_pos
+        self.threshold_neg = threshold_neg
+        self.gain = gain
+        self.window_up = window_up
+        self.window_low = window_low
+        self.base_max = base_max
+        self.base_min = base_min
+        self.peak_max = peak_max
+        self.peak_min = peak_min
+        # name decoding of the generic "states" output vector of sim
+        self.state_names = [
+            'base_pre',
+            'peak_pre',
+            'feedback',
+            'feedback_pre'
+        ]
+
+    def sim(self, inputvec, _, peakvec, __):
+        pin = inputvec[1]
+        epeak = peakvec[1]
+        para = self.props_to_para_dict()
+        base, peak, bpre, ppre, feedback, fpre = \
+            deadzone(pin, epeak, para)
+        return [base, peak], [bpre, ppre, feedback, fpre]
+
+    def get_init(self):
+        pbase = 0
+        ppeak = 0
+        internals = [0, 0, 0, 0]
+        return [pbase, ppeak], internals
+
+
+class FuzzyController(SimComponent):
+    pass
+
+
+class MPCController(SimComponent):
+    pass
+
+
+class NeuralController(SimComponent):
+    pass
+
+
+# ##
+# ## Simple additional controllers for testing purposes
+# ##
 
 class ProportionalController(SimComponent):
     def __init__(self, cut=0.5):
@@ -36,209 +154,6 @@ class ProportionalController(SimComponent):
         """Does not need any init, returning zero and [] to comply
         signature."""
         return [0, 0], []
-
-
-class FilterController(SimComponent):
-    def __init__(self, fcut=0.5, finit=0, k=1e-1, eref=0.5):
-        """Initialize a FilterController Object. It implements the
-        controller strategy 'filter control', i.e. a linear and
-        discretized first order low pass filter with a proportional feedback
-        loop that compensates deviations of the peak storage energy content
-        from a set-point.
-
-
-        Input Parameters:
-            fcut    Filter cutoff frequency of the low pass filter
-            finit   Initial integration value ("last step" of first
-                    simulation step within the simulation)
-            k       Feedback factor/gain of the peak energy feedback loop
-            eref    Reference value for the peak energy feedback loop"""
-
-        # call superclass
-        super().__init__()
-        # Parameters of the controller
-        self.fcut = fcut
-        self.finit = finit
-        self.k = k
-        self.eref = eref
-        # name decoding of the generic "states" output vector of sim
-        self.state_names = ['pfilt', 'pcomp']
-
-    def sim(self, inputvec, _, peakvec, statevec):
-        """Implements the behaviour of the FilterController, i.e. first order
-        low pass filter function in discrete form with proportional feedback.
-        See
-        https://en.wikipedia.org/wiki/Low-pass_filter#Discrete
-        -time_realization
-        for more information."""
-        # get relevant variables from input vectors
-        dt = inputvec[2]
-        pin = inputvec[1]
-        last_pfilt = statevec[0]
-        epeak = peakvec[1]
-
-        # convert filter cutoff fc to alpha
-        alpha = 2 * np.pi * dt * self.fcut / (2 * np.pi * dt * self.fcut + 1)
-        # compute filter step
-        pfilt = alpha * pin + (1 - alpha) * last_pfilt
-        # compute pcomp (feedback of energy content of peak)
-        pcomp = (epeak - self.eref) * self.k
-
-        # write output
-        pbase = pfilt + pcomp
-        ppeak = pin - pbase
-        states = [pfilt, pcomp]
-        return [pbase, ppeak], states
-
-    def get_init(self):
-        """The initial output state of pbase and ppeak is not of importance
-        and arbitrarily set to zero. This also holds true for the internal
-        state 'pfilt' and 'pcomp'. What matters is the initial value of
-        the filter. Consequently, it is set within the internals tuple. """
-        pbase = 0
-        ppeak = 0
-        internals = [self.finit, 0]
-        return [pbase, ppeak], internals
-
-
-class RuleBasedController(SimComponent):
-    pass
-
-
-class FuzzyController(SimComponent):
-    def __init__(self, pnormnegmem=(-1, -1, -0.5, -0.2),
-                 pnormlowmem=(-0.4, -0.2, 0.2, 0.4),
-                 pnormposmem=(0.2, 0.5, 1, 1),
-                 fpeaklowmem=(0, 0, 0.2, 0.4),
-                 fpeakmedmem=(0.2, 0.4, 0.6, 0.8),
-                 fpeakhimem=(0.6, 0.8, 1, 1),
-                 rpeaklowmem=(-0.5, -0.3, 0.2, 0.3),
-                 rpeakmedmem=(0.3, 0.4, 0.6, 0.7),
-                 rpeakhimem=(0.7, 0.8, 1, 1)):
-        # default values are placeholders
-        """Initialize a FuzzyController Object and creates a fuzzy model that
-        can be used to determine power partition.
-
-        Input Parameters:
-            pnormnegmem      values for the trapezoid membership function for
-                             negative normalised power
-            pnormlowmem      values for the trapezoid membership function for
-                             low normalised power
-            pnormposmem      values for the trapezoid membership function for
-                             positive normalised power
-            fpeaklowmem      values for the trapezoid membership function for a
-                             low peak storage loading degree
-            fpeakmedmem      values for the trapezoid membership function for a
-                             medium peak storage loading degree
-            fpeakhimem       values for the trapezoid membership function for a
-                             high peak storage loading degree
-            rpeaklowmem      values for the trapezoid membership function for a
-                             low peak storage power share
-            rpeakmedmem      values for the trapezoid membership function for a
-                             medium peak storage power share
-            rpeakhimem       values for the trapezoid membership function for a
-                             high peak storage power share"""
-
-        # call superclass
-        super().__init__()
-        # Parameters of the controller
-        self.pNormNegMem = pnormnegmem
-        self.pNormLowMem = pnormlowmem
-        self.pNormPosMem = pnormposmem
-        self.fPeakLowMem = fpeaklowmem
-        self.fPeakMedMem = fpeakmedmem
-        self.fPeakHiMem = fpeakhimem
-        self.rPeakLowMem = rpeaklowmem
-        self.rPeakMedMem = rpeakmedmem
-        self.rPeakHiMem = rpeakhimem
-        # name decoding of the generic "internals" output vector of sim
-        self.internals_names = []
-
-        # New Antecedent/Consequent objects hold universe variables and
-        # membership functions
-        pnorm = ctrl.Antecedent(np.arange(-1, 1, 0.01), 'pnorm')
-        fpeak = ctrl.Antecedent(np.arange(0, 1, 0.01), 'fpeak')
-        rpeak = ctrl.Consequent(np.arange(0, 1, 0.01), 'rpeak')
-
-        # building the membership functions
-        pnorm['negative'] = fuzz.trapmf(pnorm.universe, pnormnegmem)
-        pnorm['low'] = fuzz.trapmf(pnorm.universe, pnormlowmem)
-        pnorm['positive'] = fuzz.trapmf(pnorm.universe, pnormposmem)
-
-        fpeak['low'] = fuzz.trapmf(fpeak.universe, fpeaklowmem)
-        fpeak['medium'] = fuzz.trapmf(fpeak.universe, fpeakmedmem)
-        fpeak['high'] = fuzz.trapmf(fpeak.universe, fpeakhimem)
-
-        rpeak['low'] = fuzz.trapmf(rpeak.universe, rpeaklowmem)
-        rpeak['medium'] = fuzz.trapmf(rpeak.universe, rpeakmedmem)
-        rpeak['high'] = fuzz.trapmf(rpeak.universe, rpeakhimem)
-
-        # define the rules for the fuzzy relationship between input and output
-        # variables
-        rule1 = ctrl.Rule(pnorm['negative'] & fpeak['low'], rpeak['low'])
-        rule2 = ctrl.Rule(pnorm['negative'] &
-                          fpeak['medium'], rpeak['medium'])
-        rule3 = ctrl.Rule(pnorm['negative'] & fpeak['high'], rpeak['high'])
-        rule4 = ctrl.Rule(pnorm['low'] & fpeak['low'], rpeak['low'])
-        rule5 = ctrl.Rule(pnorm['low'] & fpeak['medium'], rpeak['low'])
-        rule6 = ctrl.Rule(pnorm['low'] & fpeak['high'], rpeak['low'])
-        rule7 = ctrl.Rule(pnorm['positive'] & fpeak['low'], rpeak['high'])
-        rule8 = ctrl.Rule(pnorm['positive'] &
-                          fpeak['medium'], rpeak['medium'])
-        rule9 = ctrl.Rule(pnorm['positive'] & fpeak['high'], rpeak['low'])
-
-        # creating the fuzzy model
-        strategy_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4,
-                                            rule5, rule6, rule7, rule8, rule9])
-        self.strategy = ctrl.ControlSystemSimulation(strategy_ctrl)
-
-    def sim(self, inputvec, _, peakvec, internalsvec):
-        """Inserts the current power into the fuzzy model to determine the
-        distribution to the base and peak storage"""
-        # get relevant variables from input vectors
-        pin = inputvec[2]
-        epeak = peakvec[1]
-
-        # inserts the starting values in the existing fuzzy model
-
-        # define the inputs
-        self.strategy.input['P_norm'] = pin
-        self.strategy.input['F_peak'] = epeak
-
-        # initiate the fuzzy model
-        self.strategy.compute()
-
-        # returning the output
-        rpeakout = self.strategy.output['rPeak']
-        ppeak = rpeakout * pin
-        pbase = pin - ppeak
-        # write output
-        internals = []
-        return [pbase, ppeak], internals
-
-    def get_init(self):
-        """The initial output state of pbase and ppeak is not of importance
-        and arbitrarily set to zero. The initial value for the internal vector
-        is empty, since there are no internal values yet."""
-        pbase = 0
-        ppeak = 0
-        internals = []
-        return [pbase, ppeak], internals
-
-
-class MPCController(SimComponent):
-    # def __init__(self):
-    #     pass
-
-    def sim(self, inputvec, basevec, peakvec, internalsvec):
-        pass
-
-    def get_init(self):
-        pass
-
-
-class NeuralController(SimComponent):
-    pass
 
 
 class SimpleDeadzoneController(SimComponent):
@@ -281,7 +196,9 @@ class SimpleDeadzoneController(SimComponent):
         return [0, 0], []
 
 
-# Fallback Controller, derived from SimComponent
+# ##
+# ## Fallback Controller
+# ##
 
 class FallbackController(SimComponent):
     def __init__(self, power_base=(float('-inf'), float('inf')),
