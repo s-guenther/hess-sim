@@ -369,11 +369,11 @@ class SimSetup:
         self._results = \
             Results(sim, base, peak, single)
 
-    def plot(self, *args):
+    def plot(self, *args, **kwargs):
         """Alias for plot_timeseries"""
-        return self.plot_timeseries(*args)
+        return self.plot_timeseries(*args, **kwargs)
 
-    def plot_timeseries(self, extended='auto'):
+    def plot_timeseries(self, extended='auto', axs=None, make_legend=True):
         """Plots timeseries data: power and energy of storages as function of
         time as well as some states and error codes which are useful for
         interpretation.
@@ -383,11 +383,18 @@ class SimSetup:
                        will be plotted. If 'auto', extended information will
                        be plotted in case the simulation contains
                        errors/power mismatches
+            axs        default: None
+                       array of axes objects. if provided, plot the graphs
+                       into the specified axes objects. If axs is set,
+                       overwrite/ignore the `extended` argument
+            make_legend    default: True
+                       If true, a legend will be generated automatically,
+                       else not.
         Output:
             fig        The figure object
             ax         The axes objects within a list (length=2 if
                        extended=False or length=4 if extended=True)
-            ."""
+        """
         # preparing the data for plotting
         if not self.is_simulated:
             warn('No data available, run simulation first. Skipping plot.')
@@ -408,66 +415,87 @@ class SimSetup:
         violet = COLORS['violet']
         ochre = COLORS['ochre']
 
-        # create 2 or 4 axes, depending on input 'extended'
-        if extended == 'auto':
-            # choose True if there are some errors during simulation,
-            # choose false if everything went fine
-            extended = (self.results.sim.n_mismatch > 0) | \
-                       (self.results.sim.successful_fb_stepins > 0) | \
-                       (self.results.sim.failed_fb_stepins > 0)
-        if extended:
-            fig, ax = plt.subplots(4, 1, sharex='all',
-                                   height_ratios=(6, 4, 3, 2),
-                                   figsize=(10, 8))
+        # Generate axes objects or take the provided ones
+        if axs is None:
+            plot_power = True
+            plot_energy = True
+            # create 2 or 4 axes, depending on input 'extended'
+            if extended == 'auto':
+                # choose True if there are some errors during simulation,
+                # choose false if everything went fine
+                extended = (self.results.sim.n_mismatch > 0) | \
+                           (self.results.sim.successful_fb_stepins > 0) | \
+                           (self.results.sim.failed_fb_stepins > 0)
+            if extended:
+                fig, ax = plt.subplots(4, 1, sharex='all',
+                                       height_ratios=(6, 4, 3, 2),
+                                       figsize=(10, 8))
+                plot_error = True
+                plot_err_codes = True
+            else:
+                fig, ax = plt.subplots(2, 1, sharex='all',
+                                       height_ratios=(3, 2),
+                                       figsize=(10, 5))
+                plot_error = False
+                plot_err_codes = False
         else:
-            fig, ax = plt.subplots(2, 1, sharex='all',
-                                   height_ratios=(3, 2),
-                                   figsize=(10, 5))
+            if np.size(axs) == 1:
+                axs = [axs]
+            n_axs_to_plot = len(axs)
+            n_axs_not_to_plot = 4 - n_axs_to_plot
+            plot_power, plot_energy, plot_error, plot_err_codes = \
+                [True]*n_axs_to_plot + [False]*n_axs_not_to_plot
+            ax = axs
+            fig = axs[0].get_figure()
 
         # power plots
-        ax[0].step(time, p_in, color='k', linewidth=2)
-        ax[0].stackplot(time, [p_base * (p_base > 0), p_peak * (p_peak > 0)],
-                        step='pre', colors=(turquoise, violet), alpha=0.5)
-        ax[0].fill_between(time, p_in, p_base + p_peak, step='pre',
-                           hatch='/', facecolor='none')
-        ax[0].stackplot(time, [p_base * (p_base < 0), p_peak * (p_peak < 0)],
-                        step='pre', colors=(turquoise, violet), alpha=0.5)
-        ax[0].step(time, np.zeros(time.shape), color='k', linewidth=0.5)
-        ax[0].grid(1)
-        ax[0].legend(['input', 'base', 'peak', 'difference'],
-                     loc='center left', bbox_to_anchor=(1.1, 0.5))
+        if plot_power:
+            ax[0].step(time, p_in, color='k', linewidth=1)
+            ax[0].stackplot(time,
+                            [p_base * (p_base > 0), p_peak * (p_peak > 0)],
+                            step='pre', colors=(turquoise, violet), alpha=0.5)
+            ax[0].fill_between(time, p_in, p_base + p_peak, step='pre',
+                               hatch='////', facecolor='none')
+            ax[0].stackplot(time,
+                            [p_base * (p_base < 0), p_peak * (p_peak < 0)],
+                            step='pre', colors=(turquoise, violet), alpha=0.5)
+            ax[0].step(time, np.zeros(time.shape), color='k', linewidth=0.5)
+            ax[0].grid(1)
+            ax[0].set_ylabel('power')
+            if make_legend:
+                ax[0].legend(['input', 'base', 'peak', 'difference'],
+                             loc='center left', bbox_to_anchor=(1.1, 0.5))
 
         # energy plots
-        axt = ax[1].twinx()
-        axt.fill_between(time, soc_base, color=turquoise, alpha=0.2,
-                         edgecolor=None)
-        axt.fill_between(time, soc_peak, color=violet, alpha=0.2,
-                         edgecolor=None)
-        ax[1].plot(time, e_base + e_peak, color='k', linewidth=2)
-        ax[1].plot(time, e_base, color=turquoise, linewidth=2)
-        ax[1].plot(time, e_peak, color=violet, linewidth=2)
-        ax[1].step(time, np.zeros(time.shape), color='k', linewidth=0.5)
-        ax[1].grid(1)
-        ax[1].legend(['total', 'base', 'peak'],
-                     loc='upper left', bbox_to_anchor=(1.1, 1))
-        axt.legend(['soc base', 'soc peak'],
-                   loc='lower left', bbox_to_anchor=(1.1, 0))
+        if plot_energy:
+            axt = ax[1].twinx()
+            axt.fill_between(time, soc_base, color=turquoise, alpha=0.2,
+                             edgecolor=None)
+            axt.fill_between(time, soc_peak, color=violet, alpha=0.2,
+                             edgecolor=None)
+            ax[1].plot(time, e_base + e_peak, color='k', linewidth=2)
+            ax[1].plot(time, e_base, color=turquoise, linewidth=2)
+            ax[1].plot(time, e_peak, color=violet, linewidth=2)
+            ax[1].step(time, np.zeros(time.shape), color='k', linewidth=0.5)
+            ax[1].grid(1)
+            if make_legend:
+                ax[1].legend(['total', 'base', 'peak'],
+                             loc='upper left', bbox_to_anchor=(1.1, 1))
+                axt.legend(['soc base', 'soc peak'],
+                           loc='lower left', bbox_to_anchor=(1.1, 0))
 
-        ax[0].set_ylabel('power')
-        ax[1].set_ylabel('energy')
-        axt.set_ylabel('soc')
+            ax[1].set_ylabel('energy')
+            axt.set_ylabel('soc')
 
-        if extended:
+        # extended plots
+        if plot_error:
+            # Error Power Plot
             d_con_fb_base = self.data['state']['fallback']['base_diff']
             d_con_fb_peak = self.data['state']['fallback']['peak_diff']
             d_con_fb_total = d_con_fb_base + d_con_fb_peak
             d_fb_stor_base = self.data['simout']['fallback']['p_base'] - p_base
             d_fb_stor_peak = self.data['simout']['fallback']['p_peak'] - p_peak
             d_fb_stor_total = d_fb_stor_base + d_fb_stor_peak
-
-            error_base = self.data['state']['base']['error']
-            error_peak = self.data['state']['peak']['error']
-            error_fb = self.data['state']['fallback']['active']
 
             # diff plots
             ax[2].step(time, d_con_fb_base, color=turquoise, linewidth=2)
@@ -476,20 +504,28 @@ class SimSetup:
             ax[2].fill_between(time, d_con_fb_base,
                                d_con_fb_base - d_fb_stor_base,
                                color=turquoise,
-                               step='pre', hatch='-', facecolor='none')
+                               step='pre', hatch='----', facecolor='none')
             ax[2].fill_between(time, d_fb_stor_peak, color=violet,
-                               step='pre', hatch='|', facecolor='none')
+                               step='pre', hatch='||||', facecolor='none')
             ax[2].fill_between(time, d_fb_stor_total, color=ochre,
                                step='pre', facecolor=ochre, alpha=0.5,
                                edgecolor=ochre, linewidth=2)
 
-            ax[2].legend(['diff con-fb base', 'diff con-fb peak',
-                          'diff con-fb total',
-                          'diff fb-stor base', 'diff fb-stor peak',
-                          'diff fb_stor_total'],
-                         loc='center left', bbox_to_anchor=(1.1, 0.5))
+            ax[2].grid(1)
+            ax[2].set_ylabel('power error')
+            if make_legend:
+                ax[2].legend(['diff con-fb base', 'diff con-fb peak',
+                              'diff con-fb total',
+                              'diff fb-stor base', 'diff fb-stor peak',
+                              'diff fb_stor_total'],
+                             loc='center left', bbox_to_anchor=(1.1, 0.5))
 
-            # error code plots
+        if plot_err_codes:
+            # error code plot
+            error_base = self.data['state']['base']['error']
+            error_peak = self.data['state']['peak']['error']
+            error_fb = self.data['state']['fallback']['active']
+
             lfb, lb, lp = 0, -0.1, -0.2
             ax[3].fill_between(time, lfb, lfb + 0.08*(error_fb == 1),
                                color=COLORS['ochre1'], step='pre')
@@ -524,26 +560,23 @@ class SimSetup:
                            color=COLORS['base5'])
             ax[3].annotate('Peak Storage', (0, lp + 1e-2),
                            color=COLORS['peak5'])
-
-            ax[3].legend(['success power', 'success soc', 'success both',
-                          'fail power', 'fail soc', 'fail both',
-                          'power bound', 'soc bound', 'bound both',
-                          'power bound', 'soc bound', 'bound both'],
-                         loc='upper left', bbox_to_anchor=(0.0, -0.3),
-                         ncol=4)
-
-            ax[2].grid(1)
-            ax[2].set_ylabel('power error')
             ax[3].grid(1)
             ax[3].set_ylabel('error codes')
             ax[3].set_yticks([])
+            if make_legend:
+                ax[3].legend(['success power', 'success soc', 'success both',
+                              'fail power', 'fail soc', 'fail both',
+                              'power bound', 'soc bound', 'bound both',
+                              'power bound', 'soc bound', 'bound both'],
+                             loc='upper left', bbox_to_anchor=(0.0, -0.3),
+                             ncol=4)
 
         ax[-1].set_xlabel('time')
-        fig.tight_layout()
+        if axs is not None:
+            fig.tight_layout()
         return fig, ax
 
     def plot_results(self):
-
         res = self.results
 
         def to_res_array(sres):

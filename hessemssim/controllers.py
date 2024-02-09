@@ -10,6 +10,78 @@ from hessemssim.simulation import SimComponent
 
 
 # ##
+# ## Simple additional controllers for testing purposes
+# ##
+
+class ProportionalController(SimComponent):
+    def __init__(self, cut=0.5):
+        """Distributes the incoming power to the storages according to
+        cut, where cut is the share that is passed to base storage.
+
+        Input Parameters:
+            cut     default 0.5, between 0 and 1, share that distributes to
+                    the base storage, the difference is passed to peak"""
+
+        # call superclass
+        super().__init__()
+
+        self.cut = cut
+        self.state_names = []
+
+    def sim(self, inputvec, _, __, ___):
+        pin = inputvec[1]
+        pbase = pin*self.cut
+        ppeak = pin - pbase
+        internals = []
+        return [pbase, ppeak], internals
+
+    def get_init(self):
+        """Does not need any init, returning zero and [] to comply
+        signature."""
+        return [0, 0], []
+
+
+class SimpleDeadzoneController(SimComponent):
+    def __init__(self, cut=(0.5, 0.5), power_max=(-1, 1)):
+        """Implements a simple deadzone controller, where power excess to a
+        threshold value defined by cut and power_max is passed to the peak
+        storage and the rest is handled by the base storage."""
+        # expand input if necessary
+        super().__init__()
+        if np.size(cut) == 1:
+            cut = (cut, cut)
+        if np.size(power_max) == 1:
+            power_max = (-power_max, power_max)
+
+        # A few plausibility checks
+        if power_max[0] > 0 or power_max[1] < 0:
+            msg = 'Discharge power must be negative, charge power positive'
+            raise ValueError(msg)
+
+        self.cut = cut
+        self.power_max = power_max
+        self.state_names = []
+
+    def sim(self, inputvec, _, __, ___):
+        """Performs one simulation step. Power within a threshold is passed to
+        base and excess to this threshold to peak."""
+        p_in = inputvec[1]
+        maxbase = self.power_max[1]*self.cut[1]
+        minbase = self.power_max[0]*self.cut[0]
+        if p_in >= 0:
+            p_base = min(p_in, maxbase)
+        else:
+            p_base = max(p_in, minbase)
+        p_peak = p_in - p_base
+        return [p_base, p_peak], []
+
+    def get_init(self):
+        """Does not have states. Returns arbitrarily zero for base and peak
+        storage and returns empty list for states."""
+        return [0, 0], []
+
+
+# ##
 # ## Controllers that originate in the HESS-EMS package
 # ##
 
@@ -112,88 +184,16 @@ class DeadzoneController(SimComponent):
         return [pbase, ppeak], internals
 
 
-class FuzzyController(SimComponent):
+class FuzzyController(ProportionalController):
     pass
 
 
-class MPCController(SimComponent):
+class MPCController(ProportionalController):
     pass
 
 
-class NeuralController(SimComponent):
+class NeuralController(ProportionalController):
     pass
-
-
-# ##
-# ## Simple additional controllers for testing purposes
-# ##
-
-class ProportionalController(SimComponent):
-    def __init__(self, cut=0.5):
-        """Distributes the incoming power to the storages according to
-        cut, where cut is the share that is passed to base storage.
-
-        Input Parameters:
-            cut     default 0.5, between 0 and 1, share that distributes to
-                    the base storage, the difference is passed to peak"""
-
-        # call superclass
-        super().__init__()
-
-        self.cut = cut
-        self.state_names = []
-
-    def sim(self, inputvec, _, __, ___):
-        pin = inputvec[1]
-        pbase = pin*self.cut
-        ppeak = pin - pbase
-        internals = []
-        return [pbase, ppeak], internals
-
-    def get_init(self):
-        """Does not need any init, returning zero and [] to comply
-        signature."""
-        return [0, 0], []
-
-
-class SimpleDeadzoneController(SimComponent):
-    def __init__(self, cut=(0.5, 0.5), power_max=(-1, 1)):
-        """Implements a simple deadzone controller, where power excess to a
-        threshold value defined by cut and power_max is passed to the peak
-        storage and the rest is handled by the base storage."""
-        # expand input if necessary
-        super().__init__()
-        if np.size(cut) == 1:
-            cut = (cut, cut)
-        if np.size(power_max) == 1:
-            power_max = (-power_max, power_max)
-
-        # A few plausibility checks
-        if power_max[0] > 0 or power_max[1] < 0:
-            msg = 'Discharge power must be negative, charge power positive'
-            raise ValueError(msg)
-
-        self.cut = cut
-        self.power_max = power_max
-        self.state_names = []
-
-    def sim(self, inputvec, _, __, ___):
-        """Performs one simulation step. Power within a threshold is passed to
-        base and excess to this threshold to peak."""
-        p_in = inputvec[1]
-        maxbase = self.power_max[1]*self.cut[1]
-        minbase = self.power_max[0]*self.cut[0]
-        if p_in >= 0:
-            p_base = min(p_in, maxbase)
-        else:
-            p_base = max(p_in, minbase)
-        p_peak = p_in - p_base
-        return [p_base, p_peak], []
-
-    def get_init(self):
-        """Does not have states. Returns arbitrarily zero for base and peak
-        storage and returns empty list for states."""
-        return [0, 0], []
 
 
 # ##
