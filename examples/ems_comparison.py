@@ -1,33 +1,198 @@
 #!/usr/bin/env python3
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
-from scipy.interpolate import pchip_interpolate
+import scipy.io as sio
+from scipy import fft
 
 from hessemssim import (SimSetup, Storage, InputData, FilterController,
                         DeadzoneController, FuzzyController, MPCController,
                         NeuralController, PassthroughFallbackController)
 
 
+def get_estss_data(path='examples/estss64.pkl', which='all'):
+    data = pd.read_pickle(path)
+    neg = data.iloc[:, :32]
+    posneg = data.iloc[:, 32:]
+    showcase = data.loc[:, [15, 1_000_009]].iloc[:333, :]
+    tup = (data, neg, posneg, showcase)
+    ddict = {'all': data, 'neg': neg, 'posneg': posneg, 'showcase': showcase}
+    if which is None or which == 'all':
+        return data
+    elif which == 'neg':
+        return neg
+    elif which == 'posneg':
+        return posneg
+    elif which == 'showcase':
+        return showcase
+    elif which == 'as_tuple':
+        return tup
+    elif which == 'as_dict':
+        return ddict
+    else:
+        options = 'neg posneg showcase as_tuple as_dict'.split()
+        msg = (f'Unknown identifier for `which`, must be in {options}, '
+               f'found {which}')
+        raise ValueError(msg)
+
+
+def mat_export(
+        path='examples/estss64.mat',
+        datasets=get_estss_data(which='as_tuple'),  # noqa
+        varnames=('all', 'neg', 'posneg', 'showcase')
+):
+    data_dict = {k: v.to_numpy() for k, v in zip(varnames, datasets)}
+    return sio.savemat(path, data_dict)
+
+
+def mat_import(path='examples/estss64_hybrid_results.mat'):
+    varnames = ('res_all', 'res_neg', 'res_posneg', 'res_showcase')
+    header = [
+        'hyb_pot', 'rel_pot', 'hyb_skew', 'crosspoint_within', 'overdim',
+        'cut', 'ebase', 'pbase', 'epeak', 'ppeak', 'eboth', 'pboth', 'esingle',
+        'psingle'
+    ]
+    indexes = {
+        'neg': np.arange(32),
+        'posneg': np.arange(32) + 1_000_000,
+        'showcase': [15, 1_000_009]
+    }
+    indexes['all'] = np.concatenate([indexes['neg'], indexes['posneg']])
+
+    data = sio.loadmat(path)
+    data_dict = {k[4:]: v for k, v in data.items() if k in varnames}
+    for key in data_dict.keys():
+        ind = indexes[key]
+        data_dict[key] = pd.DataFrame(
+            data=data_dict[key], index=ind, columns=header
+        )
+    return data_dict
+
+
+TS = get_estss_data(which='as_dict')
+HYB = mat_import()
+
+
+def generate_estss64_plots():
+    ts_ids = TS['all'].columns
+    sim_args = [_sim_args_general(ts_id) for ts_id in ts_ids]
+    list_of_setup_lists = [sim_mult_ems_for_one_ts(*args) for args in sim_args]
+    titles = [f'estss{ts_id}' for ts_id in ts_ids]
+    kwargs = dict(figsize=(20, 11.25))
+    subfiglbls = 'Filter Deadzone Fuzzy MPC Neural'.split()
+    plt.rcParams['path.simplify'] = False
+    plt.rcParams['path.simplify_threshold'] = 1.0
+    fig_axs_tuples = [plot_comparison(slist, subfiglbls, title, **kwargs)
+                      for slist, title
+                      in zip(list_of_setup_lists, titles)]
+    # for (fig, ax), title in zip(fig_axs_tuples, titles):
+    #     fig.savefig(f'{title}.png', format='png', dpi=300)
+    return list_of_setup_lists, fig_axs_tuples
+
+
 def generate_paper_plots():
     """Generates data for two time series for each of the 5 EMS and calls
     `plot_comparison()`with this data."""
-    rng = np.random.default_rng(42)
-    ts_list = []
-    for _ in range(2):
-        xi = np.linspace(0, 1, 10)
-        yi = rng.random((10,)) - 0.75
-        yi /= np.max(np.abs(yi))
-        xx = np.linspace(0, 1, 100)
-        yy = pchip_interpolate(xi, yi, xx)
-        ts_list.append(yy)
 
-    list_of_setup_lists = [sim_mult_ems_for_one_ts(ts) for ts in ts_list]
+    sim_args = [_sim_args_for_showcase_15(), _sim_args_for_showcase_09()]
+    list_of_setup_lists = [sim_mult_ems_for_one_ts(*args) for args in sim_args]
     subfiglbls = 'Filter Deadzone Fuzzy MPC Neural'.split()
-    title = 'Random Signal'
+    titles = ['First third of ESTSS-(15)', 'First third of ESTSS-(9+1e6)']
     kwargs = dict(figsize=(8.9/2.54, 15/2.54))
     fig_axs_tuples = [plot_comparison(slist, subfiglbls, title, **kwargs)
-                      for slist in list_of_setup_lists]
+                      for slist, title
+                      in zip(list_of_setup_lists, titles)]
     return list_of_setup_lists, fig_axs_tuples
+
+
+def _sim_args_for_showcase_15():
+    ts, stor_para, con_para = _sim_args_general(15, 'showcase')
+
+    con_para[0]['finit'] = -0.35
+    con_para[0]['fcut'] = 0.8
+
+    con_para[1]['gain'] = 0.1
+
+    return ts, stor_para, con_para
+
+
+def _sim_args_for_showcase_09():
+    ts, stor_para, con_para = _sim_args_general(1_000_009, 'showcase')
+
+    con_para[0]['fcut'] = 3.5
+    con_para[0]['finit'] = -0.0
+    con_para[0]['gain'] = 0
+
+    con_para[1]['gain'] = 0.1
+
+    return ts, stor_para, con_para
+
+
+def _sim_args_general(ts_id, which='all', overdim=1.2):
+    ts = TS[which][ts_id].to_numpy()
+    res = HYB[which].loc[ts_id, :]
+
+    stor_para = (
+        # base
+        dict(
+            energy=res['ebase']*overdim,
+            power=res['pbase']*overdim,
+            efficiency=0.93,
+            selfdischarge=0.01
+        ),
+        # peak
+        dict(
+            energy=res['epeak']*overdim,
+            power=res['ppeak']*overdim,
+            efficiency=0.97,
+            selfdischarge=0.25
+        ),
+    )
+
+    con_para = (
+        # filter
+        dict(
+            fcut=_estimate_filter_cutoff(ts, res['ebase']/res['eboth']),
+            finit=ts[0]*res['cut'],
+            gain=1e-2
+        ),
+        # deadzone
+        dict(
+            threshold_pos=res['cut'],
+            threshold_neg=-res['cut'],
+            out_max=stor_para[1]['power'],
+            out_min=-stor_para[1]['power'],
+            gain=1e-2,
+            base_max=stor_para[0]['power'],
+            base_min=-stor_para[0]['power'],
+            peak_max=stor_para[1]['power'],
+            peak_min=-stor_para[1]['power']
+        ),
+        # fuzzy
+        dict(
+            cut=res['cut']
+        ),
+        # mpc
+        dict(
+            cut=res['cut']
+        ),
+        # neural
+        dict(
+            cut=res['cut']
+        ),
+    )
+
+    return ts, stor_para, con_para
+
+
+def _estimate_filter_cutoff(ts, ratio, adjust=3):
+    f_ts = fft.fft(ts)[1:int(len(ts)/2)]
+    power_spec = np.abs(f_ts)  # removed square from official power spectrum
+    cum_power = np.cumsum(power_spec)
+    total = cum_power[-1]
+    ind = np.searchsorted(cum_power, ratio*total)
+    estimate = ind/len(cum_power)*adjust
+    return estimate
 
 
 def sim_mult_ems_for_one_ts(ts, stor_para=None, con_para=None):
@@ -114,10 +279,10 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
         ax.set_xlim([0, 1])
         ax.set_ylim([-1.05, 1.05])
         ax.set_ylabel('Power $p$')
-        ax.spines['top'].set_visible(False)    # Remove the top spine
-        ax.spines['right'].set_visible(False)  # Remove the right spine
-        ax.spines['bottom'].set_visible(False) # Remove the bottom spine
-        ax.spines['left'].set_visible(False)   # Remove the left spine
+        ax.spines['top'].set_visible(False)     # Remove the top spine
+        ax.spines['right'].set_visible(False)   # Remove the right spine
+        ax.spines['bottom'].set_visible(False)  # Remove the bottom spine
+        ax.spines['left'].set_visible(False)    # Remove the left spine
         ax.plot([0, 0], [-1.1, 1.1], 'k', linewidth=1)
 
     ax.set_xlabel('Time $t$')  # noqa
@@ -126,7 +291,8 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
               bbox_to_anchor=(0.5, -0.58),
               bbox_transform=ax.transAxes)
     # lines = ax.get_lines()  # noqa
-    # fig.legend(lines, ['Input Power', 'Base Power', 'Peak Power', 'Mismatch'],
+    # fig.legend(lines,
+    #            ['Input Power', 'Base Power', 'Peak Power', 'Mismatch'],
     #            loc='lower center', bbox_to_anchor=(0.5, 0.1), ncol=1)
     # fig.tight_layout()
     # fig.subplots_adjust(bottom=0.1)
