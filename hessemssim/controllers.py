@@ -205,9 +205,12 @@ class FuzzyController(SimComponent):
             out_b_l=None, out_b_u=None, out_b_r=None,
             out_c_l=None, out_c_u=None, out_c_r=None,
             out_d_l=None, out_d_u=None, out_d_r=None,
-            out_e_l=None, out_e_u=None
+            out_e_l=None, out_e_u=None,
+            # others
+            epeak_max=1
     ):
         # call superclass
+        self._paralist = list(self.get_defaults().keys())
         super().__init__()
 
         # Membership function support points for input1 `pin`
@@ -231,19 +234,25 @@ class FuzzyController(SimComponent):
         self.out_d_l = out_d_l; self.out_d_u = out_d_u; self.out_d_r = out_d_r  # noqa
         self.out_e_l = out_e_l; self.out_e_u = out_e_u  # noqa
 
+        # others
+        self.epeak_max = epeak_max
+
+        # other defs and executions
         self._paras_updated = True
-        self._paralist = list(self.get_defaults().keys())
         self._controller = None
         self.build_controller()
         self.state_names = []
 
     def __setattr__(self, name, value):
+        if name == '_paralist':
+            super().__setattr__(name, value)
+            return None
         if name in self._paralist:
             self._paras_updated = True
         super().__setattr__(name, value)
 
     def build_controller(self):
-        para = self.props_to_para_dict()
+        para = self.props_to_para_dict(exclude=['epeak_max'])
         self._controller = build_controller_with_serialized_para(para)
         self._paras_updated = False
 
@@ -256,7 +265,8 @@ class FuzzyController(SimComponent):
     def sim(self, inputvec, _, peakvec, __):
         pin = inputvec[1]
         epeak = peakvec[1]
-        return fuzzy(pin, epeak, self.controller), []
+        fpeak = epeak/self.epeak_max
+        return fuzzy(pin, fpeak, self.controller), []
 
     def get_init(self):
         pbase = 0

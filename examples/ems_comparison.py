@@ -4,12 +4,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-import matplotlib.patheffects as PathEffects
+import matplotlib.patheffects as PathEffects  # noqa
 import scipy.io as sio
 from scipy import fft
 from hessemssim import (SimSetup, Storage, InputData, FilterController,
                         DeadzoneController, FuzzyController, MPCController,
-                        NeuralController, PassthroughFallbackController)
+                        PassthroughFallbackController)
 
 
 ESTSS_PATH = Path(__file__).parent / 'estss64.pkl'
@@ -119,7 +119,7 @@ def _sim_args_for_showcase_15():
     con_para[0]['finit'] = -0.35
     con_para[0]['fcut'] = 0.8
 
-    con_para[1]['gain'] = 0.1
+    con_para[1]['gain'] = 0.2
 
     return ts, stor_para, con_para
 
@@ -136,7 +136,7 @@ def _sim_args_for_showcase_09():
     return ts, stor_para, con_para
 
 
-def _sim_args_general(ts_id, which='all', overdim=1.2):
+def _sim_args_general(ts_id, which='all', overdim=1.1):
     ts = TS[which][ts_id].to_numpy()
     res = HYB[which].loc[ts_id, :]
 
@@ -177,9 +177,7 @@ def _sim_args_general(ts_id, which='all', overdim=1.2):
             peak_min=-stor_para[1]['power']
         ),
         # fuzzy
-        dict(
-            cut=res['cut']
-        ),
+        dict(epeak_max=stor_para[1]['energy']),
         # mpc
         dict(
             cut=res['cut']

@@ -7,7 +7,6 @@ from .controllers import FilterController
 from .controllers import DeadzoneController
 from .controllers import FuzzyController
 from .controllers import MPCController
-from .controllers import NeuralController
 
 from .controllers import ProportionalController
 from .controllers import FallbackController

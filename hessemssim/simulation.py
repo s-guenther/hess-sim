@@ -687,8 +687,11 @@ class SimComponent(ABC):
         keys = self.get_defaults().keys()
         return {key: getattr(self, key) for key in keys}
 
-    def props_to_para_dict(self, subset=False, full=False):
+    def props_to_para_dict(self, subset=False, full=False, exclude=None):
         fullset = self.get_current_para_set()
+        if exclude is not None:
+            for para in exclude:
+                fullset.pop(para)
 
         if subset:
             para = {k: fullset[k] for k in subset}  # noqa
