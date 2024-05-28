@@ -5,6 +5,7 @@ import numpy as np
 
 from hessems.deadzone import deadzone
 from hessems.lowpass import lowpass
+from hessems.fuzzy import fuzzy, build_controller_with_serialized_para
 
 from hessemssim.simulation import SimComponent
 
@@ -96,7 +97,7 @@ class FilterController(SimComponent):
 
         Input Parameters:
             fcut    Filter cutoff frequency of the low pass filter
-            k       Feedback factor/gain of the peak energy feedback loop
+            gain    Feedback factor/gain of the peak energy feedback loop
             ref    Reference value for the peak energy feedback loop
             finit   Initial integration value ("last step" of first
                     simulation step within the simulation)"""
@@ -184,15 +185,87 @@ class DeadzoneController(SimComponent):
         return [pbase, ppeak], internals
 
 
-class FuzzyController(ProportionalController):
-    pass
+class FuzzyController(SimComponent):
+    def __init__(
+            self,
+            # Membership function support points for input1 `pin`
+            in1_a_u=None, in1_a_r=None,
+            in1_b_l=None, in1_b_u=None, in1_b_r=None,
+            in1_c_l=None, in1_c_u=None, in1_c_r=None,
+            in1_d_l=None, in1_d_u=None, in1_d_r=None,
+            in1_e_l=None, in1_e_u=None,
+            # Membership function support points for input2 `epeak`
+            in2_a_u=None, in2_a_r=None,
+            in2_b_l=None, in2_b_u=None, in2_b_r=None,
+            in2_c_l=None, in2_c_u=None, in2_c_r=None,
+            in2_d_l=None, in2_d_u=None, in2_d_r=None,
+            in2_e_l=None, in2_e_u=None,
+            # Membership function support points for output `pbase`
+            out_a_u=None, out_a_r=None,
+            out_b_l=None, out_b_u=None, out_b_r=None,
+            out_c_l=None, out_c_u=None, out_c_r=None,
+            out_d_l=None, out_d_u=None, out_d_r=None,
+            out_e_l=None, out_e_u=None
+    ):
+        # call superclass
+        super().__init__()
+
+        # Membership function support points for input1 `pin`
+        self.in1_a_u = in1_a_u; self.in1_a_r = in1_a_r  # noqa
+        self.in1_b_l = in1_b_l; self.in1_b_u = in1_b_u; self.in1_b_r = in1_b_r  # noqa
+        self.in1_c_l = in1_c_l; self.in1_c_u = in1_c_u; self.in1_c_r = in1_c_r  # noqa
+        self.in1_d_l = in1_d_l; self.in1_d_u = in1_d_u; self.in1_d_r = in1_d_r  # noqa
+        self.in1_e_l = in1_e_l; self.in1_e_u = in1_e_u  # noqa
+
+        # Membership function support points for input2 `epeak`
+        self.in2_a_u = in2_a_u; self.in2_a_r = in2_a_r  # noqa
+        self.in2_b_l = in2_b_l; self.in2_b_u = in2_b_u; self.in2_b_r = in2_b_r  # noqa
+        self.in2_c_l = in2_c_l; self.in2_c_u = in2_c_u; self.in2_c_r = in2_c_r  # noqa
+        self.in2_d_l = in2_d_l; self.in2_d_u = in2_d_u; self.in2_d_r = in2_d_r  # noqa
+        self.in2_e_l = in2_e_l; self.in2_e_u = in2_e_u  # noqa
+
+        # Membership function support points for output `pbase`
+        self.out_a_u = out_a_u; self.out_a_r = out_a_r  # noqa
+        self.out_b_l = out_b_l; self.out_b_u = out_b_u; self.out_b_r = out_b_r  # noqa
+        self.out_c_l = out_c_l; self.out_c_u = out_c_u; self.out_c_r = out_c_r  # noqa
+        self.out_d_l = out_d_l; self.out_d_u = out_d_u; self.out_d_r = out_d_r  # noqa
+        self.out_e_l = out_e_l; self.out_e_u = out_e_u  # noqa
+
+        self._paras_updated = True
+        self._paralist = list(self.get_defaults().keys())
+        self._controller = None
+        self.build_controller()
+        self.state_names = []
+
+    def __setattr__(self, name, value):
+        if name in self._paralist:
+            self._paras_updated = True
+        super().__setattr__(name, value)
+
+    def build_controller(self):
+        para = self.props_to_para_dict()
+        self._controller = build_controller_with_serialized_para(para)
+        self._paras_updated = False
+
+    @property
+    def controller(self):
+        if self._paras_updated:
+            self.build_controller()
+        return self._controller
+
+    def sim(self, inputvec, _, peakvec, __):
+        pin = inputvec[1]
+        epeak = peakvec[1]
+        return fuzzy(pin, epeak, self.controller), []
+
+    def get_init(self):
+        pbase = 0
+        ppeak = 0
+        internals = []
+        return [pbase, ppeak], internals
 
 
 class MPCController(ProportionalController):
-    pass
-
-
-class NeuralController(ProportionalController):
     pass
 
 

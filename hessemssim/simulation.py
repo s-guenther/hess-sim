@@ -721,7 +721,7 @@ class InputData:
 
         self.time = np.array(time)
         self.val = np.array(value)
-        self.dt = np.diff(np.concatenate([[0], self.time]))
+        self.dt = np.diff(np.concatenate([[0], self.time]))  # noqa
         self.data = np.stack([self.time, self.val, self.dt]).transpose()
 
         # name decoding of the generic "internals" output vector of sim
