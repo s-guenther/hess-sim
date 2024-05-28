@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+import matplotlib.patheffects as PathEffects
 import scipy.io as sio
 from scipy import fft
-
 from hessemssim import (SimSetup, Storage, InputData, FilterController,
                         DeadzoneController, FuzzyController, MPCController,
                         NeuralController, PassthroughFallbackController)
 
 
-def get_estss_data(path='examples/estss64.pkl', which='all'):
+ESTSS_PATH = Path(__file__).parent / 'estss64.pkl'
+
+
+def get_estss_data(path=ESTSS_PATH, which='all'):
     data = pd.read_pickle(path)
     neg = data.iloc[:, :32]
     posneg = data.iloc[:, 32:]
@@ -96,12 +101,15 @@ def generate_paper_plots():
 
     sim_args = [_sim_args_for_showcase_15(), _sim_args_for_showcase_09()]
     list_of_setup_lists = [sim_mult_ems_for_one_ts(*args) for args in sim_args]
-    subfiglbls = 'Filter Deadzone Fuzzy MPC Neural'.split()
-    titles = ['First third of ESTSS-(15)', 'First third of ESTSS-(9+1e6)']
-    kwargs = dict(figsize=(8.9/2.54, 15/2.54))
-    fig_axs_tuples = [plot_comparison(slist, subfiglbls, title, **kwargs)
-                      for slist, title
-                      in zip(list_of_setup_lists, titles)]
+    # subfiglbls = ['Filter-based EMS',
+    #               'Deadzone-based EMS',
+    #               'Fuzzy-logic-based EMS',
+    #               'Model-predictive-control-based EMS']
+    subfiglbls = ['', '', '', '']
+    kwargs = dict(figsize=(8.9/2.54, 11.5/2.54))
+    fig_axs_tuples = [plot_comparison(slist, subfiglbls, **kwargs)
+                      for slist
+                      in list_of_setup_lists]
     return list_of_setup_lists, fig_axs_tuples
 
 
@@ -175,11 +183,7 @@ def _sim_args_general(ts_id, which='all', overdim=1.2):
         # mpc
         dict(
             cut=res['cut']
-        ),
-        # neural
-        dict(
-            cut=res['cut']
-        ),
+        )
     )
 
     return ts, stor_para, con_para
@@ -227,7 +231,6 @@ def sim_mult_ems_for_one_ts(ts, stor_para=None, con_para=None):
         DeadzoneController(**con_para[1]),
         FuzzyController(**con_para[2]),
         MPCController(**con_para[3]),
-        NeuralController(**con_para[4]),
     )
     fb_con = PassthroughFallbackController()
 
@@ -260,16 +263,20 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
 
     # Generate figure and axes objects
     fig, axs = plt.subplots(nplots, 1, sharex='all', **kwargs,
-                            gridspec_kw=dict(top=0.96, bottom=0.09, left=0.065,
-                                             right=1, hspace=0.06))
+                            gridspec_kw=dict(top=1, bottom=0.065,
+                                             left=0.047, right=1,
+                                             hspace=0.10))
     if title is not None:
         fig.suptitle(title, ha='left', va='top', x=0, y=1)
 
     for ax, setup, label in zip(axs, list_of_sim_setups, labels):
         setup.plot(axs=ax, make_legend=False)
         # Add
-        ax.text(0.015, 1.0, label,
-                transform=ax.transAxes, va='top', ha='left')
+        txt = ax.text(0.01, 1, label,
+                      transform=ax.transAxes, va='top', ha='left')
+        txt.set_path_effects(
+            [PathEffects.withStroke(linewidth=3, foreground='w')]
+        )
         ax.tick_params(axis='both', which='both',
                        bottom=False, top=False,
                        left=False, right=False,
@@ -277,18 +284,18 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
         ax.grid(0)
         ax.set_xlabel('')
         ax.set_xlim([0, 1])
-        ax.set_ylim([-1.05, 1.05])
-        ax.set_ylabel('Power $p$')
+        ax.set_ylim([1.05, -1.05])
+        ax.set_ylabel('Power $p$', labelpad=-1)
         ax.spines['top'].set_visible(False)     # Remove the top spine
         ax.spines['right'].set_visible(False)   # Remove the right spine
         ax.spines['bottom'].set_visible(False)  # Remove the bottom spine
         ax.spines['left'].set_visible(False)    # Remove the left spine
         ax.plot([0, 0], [-1.1, 1.1], 'k', linewidth=1)
 
-    ax.set_xlabel('Time $t$')  # noqa
+    ax.set_xlabel('Time $t$', labelpad=-10)  # noqa
     ax.legend('Input Base Peak Mismatch'.split(),
               ncol=4, columnspacing=1.2, fontsize='small', loc='lower center',
-              bbox_to_anchor=(0.5, -0.58),
+              bbox_to_anchor=(0.5, -0.33),
               bbox_transform=ax.transAxes)
     # lines = ax.get_lines()  # noqa
     # fig.legend(lines,
