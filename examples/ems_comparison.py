@@ -174,13 +174,23 @@ def _sim_args_general(ts_id, which='all', overdim=1.1):
             base_max=stor_para[0]['power'],
             base_min=-stor_para[0]['power'],
             peak_max=stor_para[1]['power'],
-            peak_min=-stor_para[1]['power']
+            peak_min=-stor_para[1]['power'],
         ),
         # fuzzy
         dict(epeak_max=stor_para[1]['energy']),
         # mpc
         dict(
-            cut=res['cut']
+            pbase_max=stor_para[0]['power'],
+            pbase_min=-stor_para[0]['power'],
+            ebase_max=stor_para[0]['energy'],
+            ppeak_max=stor_para[1]['power'],
+            ppeak_min=-stor_para[1]['power'],
+            epeak_max=stor_para[1]['energy'],
+            ref=stor_para[1]['energy']/2,
+            pred_horizon=50,
+            w1=1e5,
+            w2=0.1,
+            input_data=InputData(np.linspace(1/len(ts), 1, len(ts)), ts)
         )
     )
 

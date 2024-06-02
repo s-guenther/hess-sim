@@ -6,6 +6,7 @@ import numpy as np
 from hessems.deadzone import deadzone
 from hessems.lowpass import lowpass
 from hessems.fuzzy import fuzzy, build_controller_with_serialized_para
+from hessems.mpc import mpc
 
 from hessemssim.simulation import SimComponent
 
@@ -275,8 +276,84 @@ class FuzzyController(SimComponent):
         return [pbase, ppeak], internals
 
 
-class MPCController(ProportionalController):
-    pass
+class MPCController(SimComponent):
+    def __init__(self,
+            input_data=None, pred_horizon=50, pred_method='full',
+            w1=None, w2=None, w3=None, ref=None,
+            ebase_max=None, epeak_max=None,
+            pbase_max=None, pbase_min=None, ppeak_max=None, ppeak_min=None,
+            tau_base=None, tau_peak=None, eta_base=None, eta_peak=None
+    ):
+        # call superclass
+        super().__init__()
+        # write args into object
+        self.w1 = w1
+        self.w2 = w2
+        self.w3 = w3
+        self.ref = ref
+        self.ebase_max = ebase_max
+        self.epeak_max = epeak_max
+        self.pbase_max = pbase_max
+        self.pbase_min = pbase_min
+        self.ppeak_max = ppeak_max
+        self.ppeak_min = ppeak_min
+        self.tau_base = tau_base
+        self.tau_peak = tau_peak
+        self.eta_base = eta_base
+        self.eta_peak = eta_peak
+        # write args into object that are not used by the mpc-based ems of
+        # hessems but used by the controller object to correctly call the inner
+        # ems 
+        self.input_data = input_data
+        self.pred_horizon = pred_horizon
+        self.pred_method = pred_method
+        # define states (none, but var needed in framework)
+        self.state_names = []
+        # Choose prediction strategy
+        if pred_method == 'full':
+            self._predict = self._predict_full
+        elif pred_method == 'naive':
+            self._predict = self._predict_naive
+        else:
+            msg = (f'Unknown Prediction method pred_method={pred_method}. '
+                   f'Must be "full" or "naive".')
+            raise ValueError(msg)
+
+
+    def sim(self, inputvec, basevec, peakvec, _):
+        # construct prediction
+        pin, dt = self._predict(inputvec)
+        # get parameters
+        para = self.props_to_para_dict(
+            exclude=['input_data', 'pred_horizon', 'pred_method']
+        )
+        # get state variables
+        eb = basevec[1]
+        ep = peakvec[1]
+        # pass to mpc-based ems
+        base, peak, *_ = mpc(pin, dt, eb, ep, para)
+        return [base, peak], []
+
+    def get_init(self):
+        return [0, 0], []
+
+    def _predict_naive(self, inputvec):
+        pin = np.ones(self.pred_horizon)*inputvec[1]
+        dt = np.ones(self.pred_horizon)*inputvec[2]
+        return pin, dt
+
+    def _predict_full(self, inputvec):
+        # find time from inputvec in self.input_data, construct prediction
+        tvec = self.input_data.time
+        t = inputvec[0]
+        ind = np.where(tvec == t)[0][0]
+        pin = self.input_data.val[ind:ind+self.pred_horizon]
+        dt= self.input_data.dt[ind:ind+self.pred_horizon]
+        return pin, dt
+
+    def _predict(self, inputvec):
+        """Will be overwritten in __init__ with the adequate strategy"""
+        return _predict_naive(inputvec)
 
 
 # ##
