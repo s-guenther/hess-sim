@@ -147,6 +147,54 @@ class DeadzoneController(SimComponent):
                  out_min=None, threshold_pos=None, threshold_neg=None,
                  gain=None, window_up=None, window_low=None, base_max=None,
                  base_min=None, peak_max=None, peak_min=None):
+        """
+        Initialize a DeadzoneController object.
+        
+        It implements the deazone-based ems that distributes the power
+        exclusively to one storage until a threshold value, and the excess to
+        the other. 
+
+        Various parameterizations possible that change the layout of the
+        controller from base-prioritized, peak-prioritized and combined.
+        Further, different feedback algorithms are representable.
+        
+        All parameters are optional and have default values if not set.
+        Defaults are defined in and loaded from the hessems package.
+        
+        Parameters:
+        -----------
+        slope_pos : float
+            Positive slope of the (saturated) deadzone function
+        slope_neg : float
+            Negative slope of the (saturated) deadzone function
+        out_max : float
+            Maximum output of the (saturated) deadzone function
+        out_min : float
+            Minimum output of the (saturated) deadzone function 
+            input as negative value
+        threshold_pos : float
+            Positive threshold value of the (saturated) deadzone 
+            function
+        threshold_neg : float
+            Positive threshold value of the (saturated) deadzone 
+            function, input as negative value
+        gain : float
+            SOC feedback gain
+        window_up : float
+            Upper window value of the feedback logic
+        window_low : float
+            Lower window value of the feedback logic
+        base_max : float
+            Rated positive power of base storage (charge)
+        base_min : float
+            Rated negative power of base storage (discharge, input as
+            negative value)
+        peak_max : float
+            Rated positive power of peak storage (charge)
+        peak_min : float
+            Rated negative power of peak storage (discharge, input as
+            negative value)
+        """
         # call superclass
         super().__init__()
         # write parameters
@@ -172,6 +220,8 @@ class DeadzoneController(SimComponent):
         ]
 
     def sim(self, inputvec, _, peakvec, __):
+        """Simulates one step of the ems within the simulation framework by
+        delegating the calculation to the hessems toolbox"""
         pin = inputvec[1]
         epeak = peakvec[1]
         para = self.props_to_para_dict()
@@ -180,6 +230,9 @@ class DeadzoneController(SimComponent):
         return [base, peak], [bpre, ppre, feedback, fpre]
 
     def get_init(self):
+        """Initial state. Everything set to zero as the state does not matter
+        as the deadzone-based ems calculation is stateless. But format is
+        needed to comply base class signature."""
         pbase = 0
         ppeak = 0
         internals = [0, 0, 0, 0]
@@ -210,6 +263,36 @@ class FuzzyController(SimComponent):
             # others
             epeak_max=1
     ):
+        """
+        Fuzzy-logic-based Energy Management Strategy (EMS)
+
+        A Fuzzy-logic controller with two inputs (input power and peak energy
+        storage) and one output (base power). The other output (peak power) is
+        the difference from input to base. Each in and output has 5
+        triangular/trapezodial membership functions (trapezodial at edges). The
+        support points are defined via `para`.
+        The ruleset is fixed, as well as the aggregation method (bounded sum),
+        implication method (min), and defuzzification method (center of gravity).
+
+        Default controller is used if `controller` is not provided,
+        see `build_controller()` for more information.
+
+        Parameters
+        ----------
+        *args, **kwargs:
+            39 Parameters to define the exact positioning of the triangular
+            and trapezodial membership functions. For details, see the fuzzy
+            module of the hessems package, espeacially the function
+            `build_controller_with_serialized_para()` as well as the global
+            module variables
+
+        Returns
+        -------
+        base
+            Power dispatched to base storage.
+        peak
+            Power dispatched to peak storage.
+        """
         # call superclass
         self._paralist = list(self.get_defaults().keys())
         super().__init__()
@@ -245,6 +328,10 @@ class FuzzyController(SimComponent):
         self.state_names = []
 
     def __setattr__(self, name, value):
+        """Special overload of the dunder-method that additionally checks if
+        one of the membership parameters is changed. If this is the case, this
+        change is saved in self._paras_updated. Then the fuzzy controller
+        object can be rebuild before executing the next computation."""
         if name == '_paralist':
             super().__setattr__(name, value)
             return None
@@ -253,23 +340,31 @@ class FuzzyController(SimComponent):
         super().__setattr__(name, value)
 
     def build_controller(self):
+        """Generates the fuzzy controller object incorporates the logic and
+        performs the actual calculation"""
         para = self.props_to_para_dict(exclude=['epeak_max'])
         self._controller = build_controller_with_serialized_para(para)
         self._paras_updated = False
 
     @property
     def controller(self):
+        """Returns the fuzzy controller object"""
         if self._paras_updated:
             self.build_controller()
         return self._controller
 
     def sim(self, inputvec, _, peakvec, __):
+        """Simulates one step by passing the input and internal fuzzy
+        controller object to the fuzzy function of the hessems package."""
         pin = inputvec[1]
         epeak = peakvec[1]
         fpeak = epeak/self.epeak_max
         return fuzzy(pin, fpeak, self.controller), []
 
     def get_init(self):
+        """Initial state. Everything set to zero as the state does not matter
+        as the deadzone-based ems calculation is stateless. But format is
+        needed to comply base class signature."""
         pbase = 0
         ppeak = 0
         internals = []
@@ -284,6 +379,64 @@ class MPCController(SimComponent):
             pbase_max=None, pbase_min=None, ppeak_max=None, ppeak_min=None,
             tau_base=None, tau_peak=None, eta_base=None, eta_peak=None
     ):
+        """
+        Model-predictive-control-based Energy Management strategy
+    
+        Model-predictive-control calculation that weights the difference of the
+        peak storage energy content to a reference and the utilization of the base
+        storage as well as a penalty for the difference between output and target
+        trajectory in the objective.
+    
+        Prediction length is implicitely set by the length of the power_in and
+        dtime vectors.
+        Wrapper function for the MPCModel class, which instantiates the object,
+        calls the build() and solve() method and returns the computed results (with
+        the .results_as_tuple() method).
+    
+        The default values for the optional parameters are defined in and
+        loaded from the hessems package. See STD_PARA and STD_PARA_DEFINITION
+        within the mpc submodule for further information.
+    
+        Parameters
+        ----------
+        input_data : InputData object
+            Input Data object of the simulation framework which must be the
+            same as the one used for the simulation itself. It can be empty if
+            the prediction method `pred_method` is 'naive'.
+        pred_horizon : float, default: 50
+            Prediction horizon in simulation steps.
+        pred_method : string, default: 'full'
+            Can be 'full' or 'naive'.
+        w1 : float, optional
+            Penalty weight for mismatch of output to reference trajectory
+        w2 : float, optional
+            Weight for difference of peak energy to reference energy
+        w3 :  float, optional
+            Weight for base storage usage (power base)
+        ref :  float, optional
+            Reference energy for peak storage
+         Fixed parameters
+        pbase_max : float
+            Maximum base storage power (charge)
+        pbase_min :  float
+            Minimum base storage power (discharge, enter neg. value)
+        ppeak_max :  float
+            Maximum peak storage power (charge)
+        ppeak_min :  float
+            Minimum peak storage power (discharge, enter neg. value)
+        ebase_max :  float
+            Maximum energy content of base storage
+        epeak_max : float
+            Maximum energy content of peak storage
+        tau_base : float
+            Self-discharge rate of base storage
+        tau_peak : float
+            Self-discharge rate of peak storage
+        eta_base : float
+            Efficiency of base storage
+        eta_peak : float
+            Efficiency of peak storage
+        """
         # call superclass
         super().__init__()
         # write args into object
@@ -321,6 +474,8 @@ class MPCController(SimComponent):
 
 
     def sim(self, inputvec, basevec, peakvec, _):
+        """Simulates one step of the ems within the simulation framework by
+        delegating the calculation to the hessems toolbox"""
         # construct prediction
         pin, dt = self._predict(inputvec)
         # get parameters
@@ -335,14 +490,23 @@ class MPCController(SimComponent):
         return [base, peak], []
 
     def get_init(self):
+        """Initial state. Everything set to zero as the state does not matter
+        as the deadzone-based ems calculation is stateless. The mpc controller
+        needs the state of the storages, but there are no controller internal
+        states. Format is needed to comply base class signature."""
         return [0, 0], []
 
     def _predict_naive(self, inputvec):
+        """Get the input power vector for the ems computation based on a naive
+        forcast (simply repeats the current value for p prediction steps)"""
         pin = np.ones(self.pred_horizon)*inputvec[1]
         dt = np.ones(self.pred_horizon)*inputvec[2]
         return pin, dt
 
     def _predict_full(self, inputvec):
+        """Get the input power vector for the ems computation based on a full
+        or perfect prediction by loading the adequate future data from the
+        InputData object for p prediction steps"""
         # find time from inputvec in self.input_data, construct prediction
         tvec = self.input_data.time
         t = inputvec[0]
