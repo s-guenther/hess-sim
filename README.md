@@ -2,13 +2,13 @@
 
 A simulation framework to test and showcase energy management strategies
 (EMS) for hybrid energy storage systems (HESS) defined in
-[HESS-EMS](https://github.com/s-guenther/hessems).
+[HESS-EMS](https://github.com/s-guenther/hess-ems).
 
 
 ## Associated Work
 
 Paper: _forthcoming_ \
-EMS Implementations: [HESS-EMS](https://github.com/s-guenther/hessems)
+EMS Implementations: [HESS-EMS](https://github.com/s-guenther/hess-ems)
 
 To showcase the EMS, the project makes use of
 [ESTSS](https://github.com/s-guenther/estss) and
@@ -26,7 +26,7 @@ independently, and testing and visualizing other time series and EMS without
 The main modules to simulate an EMS are:
 
 - `controllers.py` provides adapters for the EMS defined in
-  [HESS-EMS](https://github.com/s-guenther/hessems)
+  [HESS-EMS](https://github.com/s-guenther/hess-ems)
 - `storages.py` provides the storage implementation
 - `simulate.py` for simulating specific storage settings with specific 
   controllers
