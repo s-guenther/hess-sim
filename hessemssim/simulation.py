@@ -87,6 +87,7 @@ evolutionary black box) optimisation in the larger scope of the toolbox."""
 from abc import ABC
 from copy import copy
 from dataclasses import dataclass
+import hashlib
 import inspect
 from warnings import warn
 
@@ -707,7 +708,7 @@ class SimComponent(ABC):
 
 class InputData:
     def __init__(self, time, value, *, strip_zero=True, downsample=False,
-                 upsample=False):
+                 upsample=False, name=None):
 
         super().__init__()
 
@@ -726,6 +727,11 @@ class InputData:
         self.val = np.array(value)
         self.dt = np.diff(np.concatenate([[0], self.time]))  # noqa
         self.data = np.stack([self.time, self.val, self.dt]).transpose()
+        if name is None:
+            # creates a 4 character hash for the provides array leaded by a '#'
+            # eg. '#a2be'
+            name = '#' + hashlib.md5(self.val.tobytes()).hexdigest()[:4]
+        self.name = name
 
         # name decoding of the generic "internals" output vector of sim
         # (this simulation component does not have any internal states)

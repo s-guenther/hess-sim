@@ -9,7 +9,7 @@ from hessemssim.simulation import SimComponent
 # Storage class, derived from SimComponent
 class UnifiedStorage(SimComponent):
     def __init__(self, energy=1, power=(-1, 1),
-                 efficiency=(0.95, 0.95), selfdischarge=1e-5):
+                 efficiency=(0.95, 0.95), selfdischarge=1e-5, init=1):
         """Initialize a Storage Object. It determines the power the
         storage unit will receive considering power and energy limits.
         Accordingly, it will calculate the new loading degree.
@@ -23,7 +23,9 @@ class UnifiedStorage(SimComponent):
             selfdischarge  self-discharge rate in x per unit time, default 1e-3
                            e.g. sd value = 1e-5, time unit: seconds,
                            storage looses 0.01 per mil of is current energy
-                           per second"""
+                           per second
+            init           initial energy as state of energy, i.e. 1 equals
+                           100% charged"""
 
         # call superclass
         super().__init__()
@@ -34,6 +36,7 @@ class UnifiedStorage(SimComponent):
         self.power = power
         self.energy = energy
         self.selfdischarge = selfdischarge
+        self.init = init
         # name decoding of the generic "state" output vector of sim
         self.state_names = ['energy', 'soc', 'power_diff', 'error']
 
@@ -116,12 +119,12 @@ class UnifiedStorage(SimComponent):
         internals = [energy, soc, power_error, soc_error]
         return [p_in, energy], internals
 
-    def get_init(self, energy=None):
+    def get_init(self):
         """The initial output state of pbase and ppeak is not of importance
         and arbitrarily set to zero. The initial value for the internal vector
         is empty, since there are no internal values yet."""
         power = 0
-        if energy is None:
-            energy = self.energy
-        internals = [energy, energy/self.energy, 0, 0]
-        return [power, energy], internals
+        # init energy is encoded as state of energy, i.e. 1 equals 100% charged
+        # but in the calculation it must be handled as absolute energy
+        internals = [self.init*self.energy, self.init, 0, 0]
+        return [power, self.init], internals
