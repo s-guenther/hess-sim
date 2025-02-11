@@ -133,7 +133,7 @@ def generate_paper_plots():
                   'Deadzone-based EMS',
                   'Fuzzy-logic-based EMS',
                   'Model-predictive-control-based EMS']
-    kwargs = dict(figsize=(8.9/2.54, 11.5/2.54))
+    kwargs = dict(figsize=(8.9/2.54, 12.5/2.54))
     fig_axs_tuples = [plot_comparison(slist, subfiglbls, **kwargs)
                       for slist
                       in list_of_setup_lists]
@@ -308,18 +308,22 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
               in zip(startlabels, subfiglabels)]
 
     # Generate figure and axes objects
+    # fig, axs = plt.subplots(nplots, 1, sharex='all', **kwargs,
+    #                         gridspec_kw=dict(top=0.965, bottom=0.065,
+    #                                          left=0.047, right=1,
+    #                                          hspace=0.25))
     fig, axs = plt.subplots(nplots, 1, sharex='all', **kwargs,
-                            gridspec_kw=dict(top=0.965, bottom=0.065,
-                                             left=0.047, right=1,
-                                             hspace=0.25))
+                            gridspec_kw=dict(top=1, bottom=0.1,
+                                             left=0.055, right=1,
+                                             hspace=0.39))
     if title is not None:
         fig.suptitle(title, ha='left', va='top', x=0, y=1)
 
     for ax, setup, label in zip(axs, list_of_sim_setups, labels):
         setup.plot(axs=ax, make_legend=False)
         # Add
-        txt = ax.text(-0.05, 1.01, label,
-                      transform=ax.transAxes, va='bottom', ha='left')
+        txt = ax.text(-0.052, -0.0, label,
+                      transform=ax.transAxes, va='top', ha='left')
         txt.set_path_effects(
             [PathEffects.withStroke(linewidth=3, foreground='w')]
         )
@@ -330,8 +334,9 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
         ax.grid(0)
         ax.set_xlabel('')
         ax.set_xlim([0, 1])
-        ax.set_ylim([1.0, -1.0])
-        ax.set_ylabel('Power $p$', labelpad=-1)
+        ax.set_ylim([0.85, -1.05])
+        ax.set_ylabel('Power $p$', labelpad=1, loc='top')
+        ax.set_xlabel('Time $t$', labelpad=-18, loc='right')  # noqa
         ax.spines['top'].set_visible(False)     # Remove the top spine
         ax.spines['right'].set_visible(False)   # Remove the right spine
         ax.spines['bottom'].set_visible(False)  # Remove the bottom spine
@@ -339,7 +344,7 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
         ax.plot([0, 0], [-1.1, 1.1], 'k', linewidth=1)
         # arrows
         if axarrows:
-            xend, y0, x0, yend, = 1, 0, 0, -1
+            xend, y0, x0, yend, = 1, 0, 0, -1.05
             lenx, leny, bx, by = 0.04, -0.3, 0.1, 0.012
             t1 = plt.Polygon([(xend, y0),
                               (xend - lenx, y0 - bx),
@@ -351,11 +356,11 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
                              color='k', ec=None, clip_on=False)
             ax.add_patch(t1)
             ax.add_patch(t2)
+        txt.set_zorder(20)
 
-    ax.set_xlabel('Time $t$', labelpad=-10)  # noqa
     ax.legend('Input Base Peak Mismatch'.split(),
               ncol=4, columnspacing=1.2, fontsize='small', loc='lower center',
-              bbox_to_anchor=(0.5, -0.38),
+              bbox_to_anchor=(0.5, -0.60),
               bbox_transform=ax.transAxes)
     # lines = ax.get_lines()  # noqa
     # fig.legend(lines,
