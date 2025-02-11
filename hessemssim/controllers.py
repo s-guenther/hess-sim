@@ -261,7 +261,12 @@ class FuzzyController(SimComponent):
             out_d_l=None, out_d_u=None, out_d_r=None,
             out_e_l=None, out_e_u=None,
             # others
-            epeak_max=1
+            epeak_max=1,
+            pbase_max=1,
+            pbase_min=-1,
+            ppeak_max=1,
+            ppeak_min=-1,
+            pin_max=1
     ):
         """
         Fuzzy-logic-based Energy Management Strategy (EMS)
@@ -277,14 +282,33 @@ class FuzzyController(SimComponent):
         Default controller is used if `controller` is not provided,
         see `build_controller()` for more information.
 
+        The membership functions and internal fuzzy controller will always work
+        on normalized variables. I.e. the membership functions always go from
+            -1 to 1 for pin input
+             0 to 1 for epeak input
+            -1 to 1 for pbase output
+        With the help of the properties `ppeak_max`, `ppeak_min`, `pbase_max`,
+        `pbase_min`, and `epeak_max`, the inputs will be normalized before
+        passing to the fuzzy() method of the hessems module and the resulting
+        normalized `pbase` of the fuzzy() method will be denormalized before
+        returned by this object. Note that this is a design choice of this
+        object and not a restriction or requirement of the fuzzy() method of
+        the hessems package.
+
         Parameters
         ----------
         *args, **kwargs:
             39 Parameters to define the exact positioning of the triangular
             and trapezodial membership functions. For details, see the fuzzy
-            module of the hessems package, espeacially the function
+            module of the hessems package, especially the function
             `build_controller_with_serialized_para()` as well as the global
             module variables
+        e_peak_max
+        pbase_max
+        pbase_min
+        ppeak_max
+        ppeak_min
+        pin_max
 
         Returns
         -------
@@ -320,6 +344,11 @@ class FuzzyController(SimComponent):
 
         # others
         self.epeak_max = epeak_max
+        self.pbase_max = pbase_max
+        self.pbase_min = pbase_min
+        self.ppeak_max = ppeak_max
+        self.ppeak_min = ppeak_min
+        self.pin_max = pin_max
 
         # other defs and executions
         self._paras_updated = True
@@ -342,7 +371,14 @@ class FuzzyController(SimComponent):
     def build_controller(self):
         """Generates the fuzzy controller object incorporates the logic and
         performs the actual calculation"""
-        para = self.props_to_para_dict(exclude=['epeak_max'])
+        para = self.props_to_para_dict(exclude=[
+            'epeak_max',
+            'pbase_max',
+            'pbase_min',
+            'ppeak_max',
+            'ppeak_min',
+            'pin_max',
+        ])
         self._controller = build_controller_with_serialized_para(para)
         self._paras_updated = False
 
@@ -359,7 +395,18 @@ class FuzzyController(SimComponent):
         pin = inputvec[1]
         epeak = peakvec[1]
         fpeak = epeak/self.epeak_max
-        return fuzzy(pin, fpeak, self.controller), []
+        pin_norm = pin/self.pin_max
+
+        base_norm, _ = fuzzy(pin_norm, fpeak, self.controller)
+
+        if base_norm >= 0:
+            base = base_norm*self.pbase_max
+        else:
+            base = -base_norm*self.pbase_min
+        
+        peak = pin - base
+
+        return (base, peak), []
 
     def get_init(self):
         """Initial state. Everything set to zero as the state does not matter
@@ -517,7 +564,7 @@ class MPCController(SimComponent):
 
     def _predict(self, inputvec):
         """Will be overwritten in __init__ with the adequate strategy"""
-        return _predict_naive(inputvec)
+        return self._predict_naive(inputvec)
 
 
 # ##
