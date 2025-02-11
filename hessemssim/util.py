@@ -13,7 +13,7 @@ from scipy import interpolate
 
 # Integral results for results() of SimSetup
 
-def total_pnorm_mismatch(reference, actual, dt=None, tol=1e-12):
+def total_pnorm_mismatch(reference, actual, dt=None, tol=1e-6):
     """Sums base and peak power errors and normalises by entire power"""
     if dt is None:
         dt = np.ones(reference.shape)
@@ -26,7 +26,7 @@ def total_pnorm_mismatch(reference, actual, dt=None, tol=1e-12):
     return mismatch
 
 
-def max_pnorm_mismatch(reference, actual, tol=1e-12):
+def max_pnorm_mismatch(reference, actual, tol=1e-6):
     """Calculates maximum power mismatch, normalised by maximum power"""
     maxpower = max(abs(reference))
     maxdiff = max(abs(reference - actual))
@@ -34,7 +34,7 @@ def max_pnorm_mismatch(reference, actual, tol=1e-12):
     return maxdiff / maxpower
 
 
-def nnorm_p_mismatch(reference, actual, dt=None, tol=1e-12):
+def nnorm_p_mismatch(reference, actual, dt=None, tol=1e-6):
     """Determines the number of timesteps an error occurred, normalised to
     the length of the data """
     if dt is None:
@@ -231,4 +231,22 @@ def total_norm_dim(enorm_base, enorm_peak, pnorm_base, pnorm_peak):
     vector is defined as [energy, power] normalizsed by the single storage
     dimensions."""
     eb, ep, pb, pp = enorm_base, enorm_peak, pnorm_base, pnorm_peak
-    return np.sqrt((eb + ep) ** 2 + (pb + pp) ** 2)
+    return np.sqrt((eb + ep) ** 2 + (pb + pp) ** 2)/np.sqrt(2)
+
+
+def loss_eta(power, eta_dis, eta_ch, dt=None):
+    """Returns the losses due to conversion for a given power profile"""
+    if dt is None:
+        dt = np.ones(power.shape)
+
+    pplus = power*(power >= 0)
+    pminus = power*(power < 0)
+
+    return np.sum(pplus*(1 - eta_ch) + pminus*(1 - 1/eta_dis)*dt)
+
+
+def loss_tau(energy, tau, dt=None):
+    """Returns the losses due to self-discharge for a given energy profile"""
+    if dt is None:
+        dt = np.ones(energy.shape)
+    return np.sum(energy*tau*dt)

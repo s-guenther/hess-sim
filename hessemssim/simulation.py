@@ -330,6 +330,9 @@ class SimSetup:
             util.total_norm_dim(enorm_base, enorm_peak,
                                 pnorm_base, pnorm_peak))
 
+        base_loss_eta = util.loss_eta(p_base, *self.base.eta, dt)
+        base_loss_tau = util.loss_tau(e_base, self.base.tau, dt)
+
         # Base Results
         base = StorageResults(
             util.cycles_from_power(p_base, dt, ecap_base),
@@ -340,7 +343,14 @@ class SimSetup:
             pnorm_base,
             ecap_base,
             prated_base,
-            util.specific_power(prated_base, ecap_base))
+            util.specific_power(prated_base, ecap_base),
+            base_loss_eta,
+            base_loss_tau,
+            base_loss_eta + base_loss_tau,
+        )
+
+        peak_loss_eta = util.loss_eta(p_peak, *self.peak.eta, dt)
+        peak_loss_tau = util.loss_tau(e_peak, self.peak.tau, dt)
 
         # Peak Results
         peak = StorageResults(
@@ -352,7 +362,11 @@ class SimSetup:
             pnorm_peak,
             ecap_peak,
             prated_peak,
-            util.specific_power(prated_peak, ecap_peak))
+            util.specific_power(prated_peak, ecap_peak),
+            peak_loss_eta,
+            peak_loss_tau,
+            peak_loss_eta + peak_loss_tau,
+        )
 
         # Single Results
         single = StorageResults(
@@ -364,7 +378,11 @@ class SimSetup:
             util.pnorm(signal, prated_single),
             ecap_single,
             prated_single,
-            util.specific_power(prated_single, ecap_single))
+            util.specific_power(prated_single, ecap_single),
+            np.nan,
+            np.nan,
+            np.nan,
+        )
 
         # Write to output
         self._results = \
@@ -412,8 +430,8 @@ class SimSetup:
         p_base = self.data['simout']['base']['p_base']
         p_peak = self.data['simout']['peak']['p_peak']
 
-        turquoise = COLORS['turquoise']
-        violet = COLORS['violet']
+        turquoise = COLORS['turquoise4']
+        violet = COLORS['violet2']
         ochre = COLORS['ochre']
 
         # Generate axes objects or take the provided ones
@@ -463,6 +481,12 @@ class SimSetup:
             ax[0].step(time, np.zeros(time.shape), color='k', linewidth=0.5)
             ax[0].grid(1)
             ax[0].set_ylabel('power')
+            ax[0].step(time, p_base * (p_base > 0), color='k', linewidth=0.5)
+            ax[0].step(time, p_base * (p_base > 0) + p_peak * (p_peak > 0),
+                       color='k', linewidth=0.5)
+            ax[0].step(time, p_base * (p_base < 0), color='k', linewidth=0.5)
+            ax[0].step(time, p_base * (p_base < 0) + p_peak * (p_peak < 0),
+                       color='k', linewidth=0.5)
             if make_legend:
                 ax[0].legend(['input', 'base', 'peak', 'difference'],
                              loc='center left', bbox_to_anchor=(1.1, 0.5))
@@ -645,6 +669,9 @@ class StorageResults:
     energy: float
     power: float
     spec_power: float
+    loss_eta: float
+    loss_tau: float
+    loss_total: float
 
 
 @dataclass

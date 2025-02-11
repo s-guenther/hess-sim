@@ -55,6 +55,11 @@ class UnifiedStorage(SimComponent):
         self._power = value
 
     @property
+    def specific_power(self):
+        """Returns the larger specific power (charge or discharge)"""
+        return np.max([p/self.energy for p in self.power])
+
+    @property
     def efficiency(self):
         return self._efficiency
 
@@ -127,4 +132,4 @@ class UnifiedStorage(SimComponent):
         # init energy is encoded as state of energy, i.e. 1 equals 100% charged
         # but in the calculation it must be handled as absolute energy
         internals = [self.init*self.energy, self.init, 0, 0]
-        return [power, self.init], internals
+        return [power, self.init*self.energy], internals
