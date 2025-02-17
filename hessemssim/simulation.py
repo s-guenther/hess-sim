@@ -330,8 +330,8 @@ class SimSetup:
             util.total_norm_dim(enorm_base, enorm_peak,
                                 pnorm_base, pnorm_peak))
 
-        base_loss_eta = util.loss_eta(p_base, *self.base.eta, dt)
-        base_loss_tau = util.loss_tau(e_base, self.base.tau, dt)
+        base_loss_eta = util.loss_eta(p_base, *self.base.efficiency, dt)
+        base_loss_tau = util.loss_tau(e_base, self.base.selfdischarge, dt)
 
         # Base Results
         base = StorageResults(
@@ -349,8 +349,8 @@ class SimSetup:
             base_loss_eta + base_loss_tau,
         )
 
-        peak_loss_eta = util.loss_eta(p_peak, *self.peak.eta, dt)
-        peak_loss_tau = util.loss_tau(e_peak, self.peak.tau, dt)
+        peak_loss_eta = util.loss_eta(p_peak, *self.peak.efficiency, dt)
+        peak_loss_tau = util.loss_tau(e_peak, self.peak.selfdischarge, dt)
 
         # Peak Results
         peak = StorageResults(

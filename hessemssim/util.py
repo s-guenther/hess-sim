@@ -31,7 +31,7 @@ def max_pnorm_mismatch(reference, actual, tol=1e-6):
     maxpower = max(abs(reference))
     maxdiff = max(abs(reference - actual))
     maxdiff = 0 if maxdiff < tol else maxdiff
-    return maxdiff / maxpower
+    return abs(maxdiff / maxpower)
 
 
 def nnorm_p_mismatch(reference, actual, dt=None, tol=1e-6):
