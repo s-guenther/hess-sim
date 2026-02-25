@@ -7,7 +7,7 @@ A simulation framework to test and showcase energy management strategies
 
 ## Associated Work
 
-Paper: _forthcoming_ \
+Paper: [Representative energy management strategies for hybrid energy storage systems derived from a meta-review](https://doi.org/10.1016/j.rser.2025.115610)\
 EMS Implementations: [HESS-EMS](https://github.com/s-guenther/hess-ems)
 
 To showcase the EMS, the project makes use of
