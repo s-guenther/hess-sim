@@ -424,7 +424,8 @@ class MPCController(SimComponent):
             w1=None, w2=None, w3=None, ref=None,
             ebase_max=None, epeak_max=None,
             pbase_max=None, pbase_min=None, ppeak_max=None, ppeak_min=None,
-            tau_base=None, tau_peak=None, eta_base=None, eta_peak=None
+            tau_base=None, tau_peak=None, eta_base=None, eta_peak=None,
+            use_cache=False,
     ):
         """
         Model-predictive-control-based Energy Management strategy
@@ -483,6 +484,13 @@ class MPCController(SimComponent):
             Efficiency of base storage
         eta_peak : float
             Efficiency of peak storage
+        use_cache : int or False
+            If a cache shall be used. If an integer is passed, the mpc is only
+            executed every `use_cache` steps, instead of every step, using the
+            precomputed results from the former step. This effectively speeds
+            up the computation `use_cache` times at the cost delayed reaction
+            time of `use_cache` steps and the introduction of steps/stairs in
+            the power profile, instead of a smooth transition.
         """
         # call superclass
         super().__init__()
@@ -505,8 +513,9 @@ class MPCController(SimComponent):
         # hessems but used by the controller object to correctly call the inner
         # ems 
         self.input_data = input_data
-        self.pred_horizon = pred_horizon
+        self.pred_horizon = int(pred_horizon)
         self.pred_method = pred_method
+        self.use_cache = use_cache
         # define states (none, but var needed in framework)
         self.state_names = []
         # Choose prediction strategy
@@ -518,22 +527,35 @@ class MPCController(SimComponent):
             msg = (f'Unknown Prediction method pred_method={pred_method}. '
                    f'Must be "full" or "naive".')
             raise ValueError(msg)
-
+        # _cache internally caches prediction, to speedup calculation
+        self._cache = None
+        self._cachesize = use_cache
+        self._initialize_cache()
 
     def sim(self, inputvec, basevec, peakvec, _):
         """Simulates one step of the ems within the simulation framework by
         delegating the calculation to the hessems toolbox"""
+        # check if prediction exists in cache, if so, return the cache value
+        time = inputvec[0]
+        base, peak = self._fetch_from_cache(time)
+        if base is not None:
+            peak = inputvec[1] - base
+            return [base, peak], []
+        # if no value in cache exists, proceed with normal calculation
         # construct prediction
         pin, dt = self._predict(inputvec)
         # get parameters
         para = self.props_to_para_dict(
-            exclude=['input_data', 'pred_horizon', 'pred_method']
+            exclude=['input_data', 'pred_horizon', 'pred_method', 'use_cache']
         )
         # get state variables
         eb = basevec[1]
         ep = peakvec[1]
         # pass to mpc-based ems
-        base, peak, *_ = mpc(pin, dt, eb, ep, para)
+        base, __, pred_b, pred_p, *_ = mpc(pin, dt, eb, ep, para)
+        peak = inputvec[1] - base
+        # update the cache with the predicted time series
+        self._update_cache(time, pred_b, pred_p)
         return [base, peak], []
 
     def get_init(self):
@@ -546,8 +568,8 @@ class MPCController(SimComponent):
     def _predict_naive(self, inputvec):
         """Get the input power vector for the ems computation based on a naive
         forcast (simply repeats the current value for p prediction steps)"""
-        pin = np.ones(self.pred_horizon)*inputvec[1]
-        dt = np.ones(self.pred_horizon)*inputvec[2]
+        pin = np.ones(int(self.pred_horizon))*inputvec[1]
+        dt = np.ones(int(self.pred_horizon))*inputvec[2]
         return pin, dt
 
     def _predict_full(self, inputvec):
@@ -565,6 +587,40 @@ class MPCController(SimComponent):
     def _predict(self, inputvec):
         """Will be overwritten in __init__ with the adequate strategy"""
         return self._predict_naive(inputvec)
+
+    def _initialize_cache(self):
+        """Initializes the cache with a dict keys "time", "pred_b", and
+        "pred_c"  and nan values."""
+        if not self._cachesize:
+            return
+        self._cache = {}
+        self._cache["time"] = np.array([np.nan]*self._cachesize)
+        self._cache["pred_b"] = np.array([np.nan]*self._cachesize)
+        self._cache["pred_p"] = np.array([np.nan]*self._cachesize)
+
+    def _update_cache(self, time, pred_b, pred_p):
+        """Updates the cache with the forthcoming time stamps of time `time`"""
+        if not self._cachesize:
+            return
+        tlen = self._cachesize
+        tind = np.where(time == self.input_data.time)[0][0]
+        timevec = self.input_data.time[tind:tind+tlen]
+        self._cache["time"] = timevec
+        self._cache["pred_b"] = pred_b
+        self._cache["pred_p"] = pred_p
+
+    def _fetch_from_cache(self, time):
+        """Looks if a cached value for timestamp `time` exists, if so, return
+        the predicted value of this timestep, else return None"""
+        if not self._cachesize:
+            return None, None
+        timevec = self._cache["time"]
+        if not time in timevec:
+            return None, None
+        tind = np.where(time == timevec)[0][0]
+        base = self._cache["pred_b"][tind]
+        peak = self._cache["pred_p"][tind]
+        return base, peak
 
 
 # ##

@@ -197,7 +197,8 @@ def _sim_args_general(ts_id, which='all', overdim=1.1):
             pred_horizon=50,
             w1=1e5,
             w2=0.1,
-            input_data=InputData(np.linspace(1/len(ts), 1, len(ts)), ts)
+            input_data=InputData(np.linspace(1/len(ts), 1, len(ts)), ts),
+            use_cache=False,
         )
     )
 
@@ -369,3 +370,8 @@ def plot_comparison(list_of_sim_setups, subfiglabels=None, title=None,
     # fig.tight_layout()
     # fig.subplots_adjust(bottom=0.1)
     return fig, ax
+
+
+if __name__ == "__main__":
+    generate_paper_plots()
+    dummybreakpoint=True

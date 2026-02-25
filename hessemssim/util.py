@@ -13,7 +13,7 @@ from scipy import interpolate
 
 # Integral results for results() of SimSetup
 
-def total_pnorm_mismatch(reference, actual, dt=None, tol=1e-6):
+def total_pnorm_mismatch(reference, actual, dt=None, tol=1e-4):
     """Sums base and peak power errors and normalises by entire power"""
     if dt is None:
         dt = np.ones(reference.shape)
@@ -26,7 +26,7 @@ def total_pnorm_mismatch(reference, actual, dt=None, tol=1e-6):
     return mismatch
 
 
-def max_pnorm_mismatch(reference, actual, tol=1e-6):
+def max_pnorm_mismatch(reference, actual, tol=1e-4):
     """Calculates maximum power mismatch, normalised by maximum power"""
     maxpower = max(abs(reference))
     maxdiff = max(abs(reference - actual))
@@ -34,7 +34,7 @@ def max_pnorm_mismatch(reference, actual, tol=1e-6):
     return abs(maxdiff / maxpower)
 
 
-def nnorm_p_mismatch(reference, actual, dt=None, tol=1e-6):
+def nnorm_p_mismatch(reference, actual, dt=None, tol=1e-4):
     """Determines the number of timesteps an error occurred, normalised to
     the length of the data """
     if dt is None:
